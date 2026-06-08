@@ -89,6 +89,16 @@
   .logtab .month-row td{background:var(--grey-soft);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line-2)}
   .logtab .month-row:hover td{background:#e8e1d2}
   .mcaret{display:inline-block;width:12px;color:var(--ink-soft)}
+  .substeps{list-style:none;margin:4px 0 0 28px;padding:0;display:flex;flex-direction:column;gap:2px}
+  .substep{display:flex;align-items:center;gap:7px;font-size:12px}
+  .substep input[type=checkbox]{width:13px;height:13px;accent-color:var(--teal);flex:0 0 auto}
+  .substep [contenteditable]{flex:1;outline:none;min-width:50px}
+  .substep.done [contenteditable]{text-decoration:line-through;color:var(--grey)}
+  .substep .x{font-size:11px}
+  .addsub{margin:4px 0 0 28px;border:none;background:transparent;color:var(--accent);font-size:11.5px;font-weight:600;cursor:pointer;padding:2px 0}
+  .addsub:hover{text-decoration:underline}
+  .subcount{font-size:11px;color:var(--ink-soft);font-weight:600;flex:0 0 auto}
+  [contenteditable]:empty:before{content:attr(data-ph);color:var(--grey)}
   .step-add{display:flex;gap:6px;margin-top:6px}.step-add input{flex:1;padding:5px 8px;font-size:12px}
   .stepbud{width:52px;padding:2px 5px;font-size:11px;text-align:right;flex:0 0 auto}
   .dmc-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12px}
@@ -407,7 +417,7 @@
   async function save(){ if(memoryFallback) return; try{await window.storage.set(KEY,JSON.stringify(state));}catch(e){memoryFallback=true;} }
 
   function freshMs(){const m={};MS_DEFS.forEach(d=>{m[d.id]=freshMsOne(d);});return m;}
-  function freshMsOne(def){return {status:"Not started",due:"",budget:0,steps:def.steps.map((s,i)=>({id:def.id+i+rid(),label:s,done:false,budget:0,due:"",note:""}))};}
+  function freshMsOne(def){return {status:"Not started",due:"",budget:0,steps:def.steps.map((s,i)=>({id:def.id+i+rid(),label:s,done:false,budget:0,due:"",note:"",subs:[]}))};}
   function rid(){return Math.random().toString(36).slice(2,7);}
 
   function seedSubject(code,course,coding,entries,type){
@@ -474,7 +484,9 @@
 
   function activeCycle(){return state.cycles.find(c=>c.id===state.activeCycleId)||state.cycles[0];}
   function cycleSubjects(){const c=activeCycle();return state.subjects.filter(s=>s.cycleId===c.id);}
-  function msProgress(ms){if(ms.status==="Complete")return 1;if(!ms.steps.length)return ms.status==="In progress"?.4:(ms.status==="Review"?.8:0);return ms.steps.filter(s=>s.done).length/ms.steps.length;}
+  function stepProgress(st){const subs=st.subs||[];if(subs.length)return subs.filter(x=>x.done).length/subs.length;return st.done?1:0;}
+  function msProgress(ms){if(ms.status==="Complete")return 1;if(!ms.steps.length)return ms.status==="In progress"?.4:(ms.status==="Review"?.8:0);return ms.steps.reduce((a,s)=>a+stepProgress(s),0)/ms.steps.length;}
+  function findStepOfSub(ms,subId){return ms.steps.find(st=>(st.subs||[]).some(x=>x.id===subId));}
   function subjProgress(s){return MS_DEFS.map(x=>msProgress(s.milestones[x.id])).reduce((a,b)=>a+b,0)/MS_DEFS.length;}
   function subjHours(s,mk){return s.hours.filter(h=>!mk||monthKey(h.date)===mk).reduce((a,h)=>a+(+h.hrs||0),0);}
   function cycleHours(from){let t=0;cycleSubjects().forEach(s=>s.hours.forEach(h=>{if(!from||d(h.date)>=from)t+=(+h.hrs||0);}));return t;}
@@ -599,7 +611,7 @@
       <select class="status-sel" data-status>${STATUS.map(st=>`<option ${st===ms.status?"selected":""}>${st}</option>`).join("")}</select>
       </div><div class="ms-body">
       <div style="font-size:11px;color:var(--ink-soft);display:flex;align-items:center;gap:6px">Due <input type="text" readonly class="dtp" value="${ms.due}" data-due placeholder="—" style="padding:3px 22px 3px 5px;font-size:11px;width:118px">${dueDl!==null?`<b style="color:${dueDl<0?'var(--late)':dueDl<=7?'var(--warn)':'var(--ink-soft)'}">${dueDl}d</b>`:""}</div>
-      <ul class="steps">${ms.steps.map(st=>{const sdl=st.due?diffDays(d(st.due),today()):null;return `<li class="step-item ${st.done?'done':''}" data-stepli="${st.id}"><div class="step-top"><span class="drag" draggable="true" data-draghandle="${st.id}" title="Drag to reorder">⠿</span><input type="checkbox" ${st.done?"checked":""} data-stepchk="${st.id}"><span contenteditable data-steplbl="${st.id}">${st.label}</span>${bud?`<input type="number" step="0.25" min="0" class="stepbud" data-stepbudget="${st.id}" value="${st.budget||""}" placeholder="0" title="item budget">`:""}<input type="text" readonly class="dtp stepdue" data-stepdue="${st.id}" value="${st.due||""}" placeholder="due" title="due date">${sdl!==null?`<b class="dueb" style="color:${sdl<0?'var(--late)':sdl<=7?'var(--warn)':'var(--ink-soft)'}">${sdl}d</b>`:""}<button class="x" data-stepdel="${st.id}">✕</button></div><input class="step-note" data-stepnote="${st.id}" value="${(st.note||'').replace(/"/g,'&quot;')}" placeholder="notes…"></li>`;}).join("")}</ul>
+      <ul class="steps">${ms.steps.map(st=>{const sdl=st.due?diffDays(d(st.due),today()):null;const subs=st.subs||[];const pdone=subs.length?subs.every(x=>x.done):st.done;const subCount=subs.length?` <span class="subcount">(${subs.filter(x=>x.done).length}/${subs.length})</span>`:"";return `<li class="step-item ${pdone?'done':''}" data-stepli="${st.id}"><div class="step-top"><span class="drag" draggable="true" data-draghandle="${st.id}" title="Drag to reorder">⠿</span><input type="checkbox" ${pdone?"checked":""} data-stepchk="${st.id}"><span contenteditable data-steplbl="${st.id}">${st.label}</span>${subCount}${bud?`<input type="number" step="0.25" min="0" class="stepbud" data-stepbudget="${st.id}" value="${st.budget||""}" placeholder="0" title="item budget">`:""}<input type="text" readonly class="dtp stepdue" data-stepdue="${st.id}" value="${st.due||""}" placeholder="due" title="due date">${sdl!==null?`<b class="dueb" style="color:${sdl<0?'var(--late)':sdl<=7?'var(--warn)':'var(--ink-soft)'}">${sdl}d</b>`:""}<button class="x" data-stepdel="${st.id}">✕</button></div><input class="step-note" data-stepnote="${st.id}" value="${(st.note||'').replace(/"/g,'&quot;')}" placeholder="notes…">${subs.length?`<ul class="substeps">${subs.map(sub=>`<li class="substep ${sub.done?'done':''}"><input type="checkbox" ${sub.done?"checked":""} data-subchk="${sub.id}"><span contenteditable data-sublbl="${sub.id}" data-ph="New sub-item">${sub.label}</span><button class="x" data-subdel="${sub.id}">✕</button></li>`).join("")}</ul>`:""}<button class="addsub" data-addsub="${st.id}">+ sub-item</button></li>`;}).join("")}</ul>
       <div class="step-add"><input placeholder="${bud?'Add media item…':'Add step…'}" data-stepadd><button class="btn tiny" data-stepaddbtn>Add</button></div>${dmcFoot}</div></div>`;
   }
   function renderLog(s){
@@ -687,14 +699,17 @@
     const tog=e.target.closest("[data-toggle]");
     if(tog){const s=findSubj(tog.dataset.toggle);s._open=!s._open;renderSubjects();return;}
     const sd=e.target.closest("[data-stepdel]");if(sd){const{sid,mid}=ctx(e.target);const m=findSubj(sid).milestones[mid];m.steps=m.steps.filter(x=>x.id!==sd.dataset.stepdel);keepOpen(sid);renderSubjects();commit();return;}
-    const sa=e.target.closest("[data-stepaddbtn]");if(sa){const{sid,mid,box}=ctx(e.target);const inp=box.querySelector("[data-stepadd]");if(inp.value.trim()){findSubj(sid).milestones[mid].steps.push({id:"s"+rid(),label:inp.value.trim(),done:false,budget:0,due:"",note:""});keepOpen(sid);renderSubjects();commit();}return;}
+    const as=e.target.closest("[data-addsub]");if(as){const{sid,mid}=ctx(e.target);const st=findSubj(sid).milestones[mid].steps.find(x=>x.id===as.dataset.addsub);if(st){st.subs=st.subs||[];st.subs.push({id:"sub"+rid(),label:"",done:false});keepOpen(sid);renderSubjects();commit();}return;}
+    const subd=e.target.closest("[data-subdel]");if(subd){const{sid,mid}=ctx(e.target);const ms=findSubj(sid).milestones[mid];const st=findStepOfSub(ms,subd.dataset.subdel);if(st){st.subs=st.subs.filter(x=>x.id!==subd.dataset.subdel);keepOpen(sid);renderSubjects();commit();}return;}
+    const sa=e.target.closest("[data-stepaddbtn]");if(sa){const{sid,mid,box}=ctx(e.target);const inp=box.querySelector("[data-stepadd]");if(inp.value.trim()){findSubj(sid).milestones[mid].steps.push({id:"s"+rid(),label:inp.value.trim(),done:false,budget:0,due:"",note:"",subs:[]});keepOpen(sid);renderSubjects();commit();}return;}
     const la=e.target.closest("[data-ladd]");if(la){const box=e.target.closest(".log-add");const sid=box.dataset.sid;const date=box.querySelector("[data-ldate]").value;const note=box.querySelector("[data-lnote]").value.trim();const hrs=parseFloat(box.querySelector("[data-lhrs]").value);const ms=box.querySelector("[data-lms]").value;
       if(date&&hrs>0){findSubj(sid).hours.push({id:"h"+rid(),date,note,hrs,ms});keepOpen(sid);renderSubjects();commit();toast(`Logged ${hrs}h`);}return;}
     const hd=e.target.closest("[data-hdel]");if(hd){const tr=e.target.closest("tr");const sid=e.target.closest(".subj").dataset.id;const s=findSubj(sid);s.hours=s.hours.filter(h=>h.id!==hd.dataset.hdel);keepOpen(sid);renderSubjects();commit();return;}
     const mr=e.target.closest("[data-logmonth]");if(mr){const[sid,mk]=mr.dataset.logmonth.split("|");logOpen[sid+"|"+mk]=!mr.classList.contains("open");keepOpen(sid);renderSubjects();return;}
   });
   subjEl.addEventListener("change",e=>{
-    const chk=e.target.closest("[data-stepchk]");if(chk){const{sid,mid}=ctx(e.target);findSubj(sid).milestones[mid].steps.find(x=>x.id===chk.dataset.stepchk).done=chk.checked;keepOpen(sid);renderSubjects();commit();return;}
+    const chk=e.target.closest("[data-stepchk]");if(chk){const{sid,mid}=ctx(e.target);const st=findSubj(sid).milestones[mid].steps.find(x=>x.id===chk.dataset.stepchk);if(st.subs&&st.subs.length){st.subs.forEach(x=>x.done=chk.checked);}else{st.done=chk.checked;}keepOpen(sid);renderSubjects();commit();return;}
+    const subc=e.target.closest("[data-subchk]");if(subc){const{sid,mid}=ctx(e.target);const ms=findSubj(sid).milestones[mid];const st=findStepOfSub(ms,subc.dataset.subchk);if(st){const sub=st.subs.find(x=>x.id===subc.dataset.subchk);if(sub)sub.done=subc.checked;keepOpen(sid);renderSubjects();commit();}return;}
     const st=e.target.closest("[data-status]");if(st){const{sid,mid}=ctx(e.target);findSubj(sid).milestones[mid].status=st.value;keepOpen(sid);renderSubjects();commit();return;}
     const du=e.target.closest("[data-due]");if(du){const{sid,mid}=ctx(e.target);findSubj(sid).milestones[mid].due=du.value;keepOpen(sid);renderSubjects();commit();return;}
     const sb=e.target.closest("[data-stepbudget]");if(sb){const{sid,mid}=ctx(e.target);const st2=findSubj(sid).milestones[mid].steps.find(x=>x.id===sb.dataset.stepbudget);if(st2){st2.budget=parseFloat(sb.value)||0;keepOpen(sid);renderSubjects();commit();}return;}
@@ -703,7 +718,8 @@
   });
   subjEl.addEventListener("blur",e=>{
     const l=e.target.closest("[data-steplbl]");if(l){const{sid,mid}=ctx(e.target);const st=findSubj(sid).milestones[mid].steps.find(x=>x.id===l.dataset.steplbl);if(st){st.label=l.textContent.trim();save();}return;}
-    const n=e.target.closest("[data-stepnote]");if(n){const{sid,mid}=ctx(e.target);const st=findSubj(sid).milestones[mid].steps.find(x=>x.id===n.dataset.stepnote);if(st){st.note=n.value;save();}}
+    const n=e.target.closest("[data-stepnote]");if(n){const{sid,mid}=ctx(e.target);const st=findSubj(sid).milestones[mid].steps.find(x=>x.id===n.dataset.stepnote);if(st){st.note=n.value;save();}return;}
+    const sl=e.target.closest("[data-sublbl]");if(sl){const{sid,mid}=ctx(e.target);const ms=findSubj(sid).milestones[mid];const st=findStepOfSub(ms,sl.dataset.sublbl);if(st){const sub=st.subs.find(x=>x.id===sl.dataset.sublbl);if(sub){sub.label=sl.textContent.trim();save();}}}
   },true);
 
   // drag-to-reorder checklist items (within a section)
