@@ -236,6 +236,8 @@
     </div>
     <div class="foot-actions">
       <button class="btn ghost tiny" id="exportBtn">⬇ Backup data (JSON)</button>
+      <button class="btn ghost tiny" id="importBtn">⬆ Import / Restore</button>
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none">
       <button class="btn ghost tiny" id="resetBtn">Reset all data</button>
     </div>
   </div>
@@ -890,6 +892,27 @@
 
   document.getElementById("addCycleBtn").onclick=()=>{const name=prompt("Cycle name (e.g. Cycle 3 · 2026):");if(!name)return;const start=prompt("Start date YYYY-MM-DD:");if(!start)return;const id="c"+Date.now();state.cycles.push({id,name,start,weeks:WEEKS});state.activeCycleId=id;save();renderAll();};
   document.getElementById("exportBtn").onclick=()=>dl(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),"ld-workload-backup.json");
+  document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
+  document.getElementById("importFile").onchange=async(e)=>{
+    const f=e.target.files[0];if(!f)return;
+    try{
+      const data=JSON.parse(await f.text());
+      if(data&&Array.isArray(data.subjects)&&Array.isArray(data.cycles)){
+        if(confirm("Restore this full backup? It REPLACES all current data in the tracker.")){
+          state=data;if(!state.invoice)state.invoice=defaultState().invoice;applyBudgets(state.subjects);runMigrations();await save();renderAll();toast("Backup restored");
+        }
+      }else if(data&&data.type==="ld-month-archive"&&Array.isArray(data.entries)){
+        const wasClosed=confirm(`Re-add ${data.monthName||"this month"}'s entries.\n\nClick OK if you had used "Close month" on it (I'll also subtract those hours from each opening balance so they aren't double-counted).\nClick Cancel to just re-add the rows without touching opening balances.`);
+        let added=0;
+        data.entries.forEach(rec=>{const subj=state.subjects.find(s=>s.code===rec.code);if(!subj||!Array.isArray(rec.entries))return;
+          let sum=0;rec.entries.forEach(en=>{if(!subj.hours.some(h=>h.id===en.id)){subj.hours.push({id:en.id||("h"+rid()),date:en.date,note:en.note||"",hrs:+en.hrs||0,ms:en.ms||""});added+=(+en.hrs||0);sum+=(+en.hrs||0);}});
+          if(wasClosed)subj.workedBase=Math.round(((+subj.workedBase||0)-sum)*100)/100;
+        });
+        await save();renderAll();toast(`Restored ${added.toFixed(2)}h from archive`);
+      }else{alert("That file isn't a recognised tracker backup or month archive.");}
+    }catch(err){alert("Couldn't read that file — it needs to be a JSON backup or archive exported from this tracker.");}
+    e.target.value="";
+  };
   document.getElementById("resetBtn").onclick=async()=>{if(confirm("Erase ALL data and restore the seeded template?")){state=defaultState();await save();renderAll();toast("Reset.");}};
 
   (async function init(){
